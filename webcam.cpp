@@ -1,7 +1,8 @@
 #include <opencv2/core.hpp>
-#include <opencv2/highgui.hpp>  //for imshow
 #include <opencv2/videoio.hpp>  
-#include <opencv2/imgproc.hpp>  //for conversion to B&W
+#include <opencv2/highgui.hpp>    //for imshow
+#include <opencv2/imgproc.hpp>    //for conversion to B&W
+#include <opencv2/imgcodecs.hpp>  //for sliders
 
 #include <iostream>
 #include <vector>
@@ -51,14 +52,41 @@ cv::Mat getBackground(cv::VideoCapture cap = cv::VideoCapture(0)) {
   return getBackground(frames, FMS_BKGND);
 }
 
+//global variables needed for sliders
+int frameCount = 0;
+int consecutiveValue = 2; //number of frames merged together to create borders
+
+//called if slider of consecutive frames is changed
+static void consecutiveChanged(int value, void*) {
+  frameCount = 0;
+  
+  if (value == 0) {
+    consecutiveValue = 1;
+    return;
+  }
+}
+
+
 int main() {
   cv::VideoCapture cap(0);
   cv::Mat background = getBackground(cap);
   cv::imshow("Background", background);
 
-  int frameCount = 0;
-  int consecutiveFrames = 2;
-  cv::Mat list[consecutiveFrames];
+  int maxConsecutiveFrames = 30;
+  cv::Mat list[maxConsecutiveFrames];
+
+  //add a slider for each paramether
+  cv::namedWindow("Webcam", cv::WINDOW_AUTOSIZE); // Create Window
+  int thresholdValue = 50;  //threshold applied during binary conversion
+  int dilationValue = 2;    //number of times dilation is applied
+  int minAreaValue = 500;   //areas less then this pixels will be ignored
+
+  // Adding the last paramether (a static void foo(int value,void*) function)
+  // will allow to run a code each time the the user moves the trackbar
+  cv::createTrackbar("Threshold","Webcam", &thresholdValue, 100);
+  cv::createTrackbar("Dilation interaction","Webcam", &dilationValue, 20);
+  cv::createTrackbar("Min Area","Webcam", &minAreaValue, 1000);
+  cv::createTrackbar("Consecutive frames","Webcam", &consecutiveValue, maxConsecutiveFrames, consecutiveChanged);
 
   while(true) {
     //read a frame
@@ -69,21 +97,21 @@ int main() {
     cv::Mat origFrame;
     thisFrame.copyTo(origFrame);
 
-    cv::cvtColor(thisFrame, thisFrame, cv::COLOR_BGR2GRAY);           //convert to grayscale
-    cv::absdiff(thisFrame, background, thisFrame);                    //subtract background from image
-    cv::threshold(thisFrame, thisFrame, 50, 255, cv::THRESH_BINARY);  //thresholding to convert to binary
-    cv::dilate(thisFrame,thisFrame, cv::Mat(), cv::Point(-1,-1), 2);  //dilate the image (no inside dark regions)
+    cv::cvtColor(thisFrame, thisFrame, cv::COLOR_BGR2GRAY);                       //convert to grayscale
+    cv::absdiff(thisFrame, background, thisFrame);                                //subtract background from image
+    cv::threshold(thisFrame, thisFrame, thresholdValue, 255, cv::THRESH_BINARY);  //thresholding to convert to binary
+    cv::dilate(thisFrame,thisFrame, cv::Mat(), cv::Point(-1,-1), dilationValue);  //dilate the image (no inside dark regions)
 
-    list[frameCount % consecutiveFrames] = thisFrame;
+    list[frameCount % consecutiveValue] = thisFrame;
     frameCount++;
 
     //skip if list is not already full
-    if (frameCount < consecutiveFrames)
+    if (frameCount < consecutiveValue)
       continue;
 
     //add all frames in list
     cv::Mat sum = list[0];
-    for (int i = 1; i < consecutiveFrames; i++)
+    for (int i = 1; i < consecutiveValue; i++)
       sum += list[i];
 
     //find the contours and draw them
@@ -93,7 +121,7 @@ int main() {
 
     for (auto contour : contours) {
       //skip if the area is too little
-      if (cv::contourArea(contour) < 500)
+      if (cv::contourArea(contour) < minAreaValue)
         continue;
 
       //otherwise, draw a rectangle
@@ -101,8 +129,9 @@ int main() {
       cv::rectangle(origFrame, r, {0,255,0}, 2);
     }
 
-    //out.write(origFrame);
     cv::imshow("Webcam", origFrame);
+    
+    //putting a greater number, the program will delay longer, resulting in less lag but less fps
     int key = cv::waitKey(5);
     if (key == 'b') {
       background = getBackground(cap);
