@@ -66,7 +66,6 @@ static void consecutiveChanged(int value, void*) {
   }
 }
 
-
 int main() {
   cv::VideoCapture cap(0);
   cv::Mat background = getBackground(cap);
