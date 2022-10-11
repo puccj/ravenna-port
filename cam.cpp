@@ -5,7 +5,7 @@
 
 int Cam::_framesForBG = 50;
 int Cam::_thresholdValue = 50;  
-int Cam::_dilationValue = 1;   
+int Cam::_dilationValue = 2;   
 int Cam::_minAreaValue = 700;  
 int Cam::_consecutiveValue = 2;
 int Cam::_globalFrameCount = 0;

@@ -2,24 +2,13 @@
 #include <opencv2/imgproc.hpp>
 #include <iostream>
 
-
-  cv::Mat hsvBackground;
-  cv::Mat hsvFrame;
-
-/*void onMouseClicked(int event, int x, int y, int flag, void* param) {
-  if (event == cv::EVENT_LBUTTONDOWN) {
-    cv::Vec3d frameColor = hsvFrame.at<cv::Vec3d>({x,y});
-    cv::Vec3d backgroundColor = hsvBackground.at<cv::Vec3d>({x,y});
-    std::cout << "Frame color: " << frameColor << ", background color: " << backgroundColor << '\n';
-  }
-}
-*/
-
 int main() {
   cv::Mat background = cv::imread("background.png");
   cv::Mat frame = cv::imread("frame.png");
   cv::Mat fg = cv::imread("fg.png");
 
+  cv::Mat hsvBackground;
+  cv::Mat hsvFrame;
   cv::cvtColor(background, hsvBackground, cv::COLOR_BGR2HSV);
   cv::cvtColor(frame, hsvFrame, cv::COLOR_BGR2HSV);
 
@@ -32,10 +21,6 @@ int main() {
   cv::createTrackbar("Saturation threshold","Trackbars", &saturationThreshold, 500);
   cv::createTrackbar("Lower Value Threshold", "Trackbars", &lowValueThreshold, 500);
   cv::createTrackbar("Upper Value Threshold", "Trackbars", &upValueThreshold, 500);
-
-  //cv::namedWindow("Frame");
-  //cv::setMouseCallback("Frame", onMouseClicked);
-
 
   std::vector<cv::Point> whitePoints;
   for (int i = 0; i < fg.cols; i++) {
