@@ -66,13 +66,22 @@ struct Point4 {
   double x,y,t,v;
 };*/
 
+bool isInVector(int element, std::vector<int> vector) {
+  for (auto i : vector) {
+    if (element == i)
+      return true;
+  }
+  return false;
+}
+
 int main() {
   int thresholdValue = 50;
   int dilationValue = 1;
   int consecutiveValue = 2;
   int minAreaValue = 700;
 
-  const int fitLenght = 100; //number of past position to calcualate the fit with
+  const int maxFitLenght = 100;
+  int fitLenght = 90;           //number of past position to calcualate the fit with (30 fps -> 3 seconds)
 
   cv::Mat background = getBackground("sample.mp4");
   //std::cout << "BG: " << background.size << ", " << background.channels() << '\n';
@@ -93,7 +102,7 @@ int main() {
   //cv::Point positions[fitNumber]; //store the position of the head to fit it
   
   int fitCount = 0;
-  cv::Point3d positions[fitLenght];
+  cv::Point3d positions[maxFitLenght];
 
   while (true) {
     cv::Mat frame;
@@ -192,7 +201,7 @@ int main() {
       cv::circle(origFrame, center, circle[2], {100,100,100}, 1, cv::LINE_AA);
     
       //push back position
-      positions[fitCount % fitLenght] = {center.x, center.y, frameCount};
+      positions[fitCount % maxFitLenght] = {center.x, center.y, frameCount};
       fitCount++;
     }
 
@@ -200,9 +209,14 @@ int main() {
     cv::Mat plotXT(frame.cols, 1000, CV_8UC3);
     cv::Mat plotYT(frame.rows, 1000, CV_8UC3);
     
+    /* Linear fit of: 
+     * - trajectory (assumed linear)  (y = a + bx)      y(x)
+     * - vx (assumed constant)        (x = x0 + vx *t)  x(t)
+     * - vy (assumed constant)        (y = y0 + vy *t)  y(t)
+     */
     for (auto point3 : positions) {
       cv::Scalar color;
-      if (frameCount - point3.z > 90)
+      if (frameCount - point3.z > fitLenght)
         color = {100,100,100};
       else {
         int time = (int)(point3.z*4) % 765;
@@ -218,15 +232,10 @@ int main() {
       cv::circle(plotYT, {point3.z, point3.y}, 1, color, 3);
     }
     
-    int size = fitLenght;
-    if (fitCount < fitLenght)
+    int size = maxFitLenght;
+    if (fitCount < maxFitLenght)
       size = fitCount;
 
-    /* Linear fit of: 
-     * - trajectory (assumed linear)  (y = a + bx)      y(x)
-     * - vx (assumed constant)        (x = x0 + vx *t)  x(t)
-     * - vy (assumed constant)        (y = y0 + vy *t)  y(t)
-     */
     double sumX = 0;
     double sumY = 0;
     double sumT = 0;
@@ -237,7 +246,7 @@ int main() {
       // sumWeight += weight;
 
       //skip if frame is too old
-      if (frameCount - positions[i].z > 90) { //30 fps = 3 seconds
+      if (frameCount - positions[i].z > fitLenght) {
         skipped++;
         continue;
       }
@@ -258,7 +267,7 @@ int main() {
     
     for (auto i = 0; i < size; ++i) {
       //skip if frame is too old
-      if (frameCount - positions[i].z > 90) //30 fps = 3 seconds
+      if (frameCount - positions[i].z > fitLenght)
         continue;
 
       double xMinusAvarage = positions[i].x - averageX;
@@ -279,8 +288,98 @@ int main() {
 
     /* Remove some data and calculate the fit again. We remove:
      * - the farthest point between 2 (or more) that have the same z (time) coordinate
-     * - points too far from fit
+     * - points too far from fit (not done yet)
      */
+    
+    std::vector<int> removed;
+    for (auto i = 0; i < size; ++i) {
+      if (frameCount - positions[i].z > fitLenght)
+        continue;
+      for (auto j = i+1; j < size; ++j) {
+        if (frameCount - positions[j].z > fitLenght)
+          continue;
+        if (positions[i].z == positions[j].z) {
+          double den = sqrt(1 + b*b);
+          double distanceI = abs(positions[i].y - (b* positions[i].x + a)) / den;
+          double distanceJ = abs(positions[j].y - (b* positions[j].x + a)) / den;
+          
+          //remove one point
+          if (distanceI > distanceJ) {
+            removed.push_back(i);
+            break;
+          }
+          else
+            removed.push_back(j);
+        }
+      }
+    }
+
+    //Redo the fit
+    for (auto i = 0; i < size; ++i) {
+      cv::Scalar color;
+      if (isInVector(i,removed))
+        color = {255,255,255};
+      else if (frameCount - positions[i].z > fitLenght)
+        color = {100,100,100};
+      else {
+        int time = (int)(positions[i].z*4) % 765;
+        if (time < 255)
+          color = {255-time, time, 0};
+        else if (time < 510)
+          color = {0, 510-time, time-255};
+        else
+          color = {time-510, 0, 765-time};
+      }
+      cv::circle(plotYX, {positions[i].x, positions[i].y}, 1, color, 3);
+      cv::circle(plotXT, {positions[i].z, positions[i].x}, 1, color, 3);
+      cv::circle(plotYT, {positions[i].z, positions[i].y}, 1, color, 3);
+    }
+    
+    sumX = 0;
+    sumY = 0;
+    sumT = 0;
+    skipped = 0;
+    for (auto i = 0; i < size; ++i) {
+      //skip if frame is too old
+      if (frameCount - positions[i].z > fitLenght || positions[i].z == -1) {
+        skipped++;
+        continue;
+      }
+
+      sumX += positions[i].x;
+      sumY += positions[i].y;
+      sumT += positions[i].z;
+    }
+    averageX = sumX / (size-skipped);
+    averageY = sumY / (size-skipped);
+    averageT = sumT / (size-skipped);
+
+    numYX = 0;
+    numXT = 0;
+    numYT = 0;
+    denX = 0;
+    denT = 0;
+    
+    for (auto i = 0; i < size; ++i) {
+      //skip if frame is too old
+      if (frameCount - positions[i].z > fitLenght || positions[i].z == -1)
+        continue;
+
+      double xMinusAvarage = positions[i].x - averageX;
+      double tMinusAvarage = positions[i].z - averageT;
+      numYX += xMinusAvarage*(positions[i].y - averageT);
+      numXT += tMinusAvarage*(positions[i].x - averageX);
+      numYT += tMinusAvarage*(positions[i].y - averageY);
+      denX += xMinusAvarage*xMinusAvarage;
+      denT += tMinusAvarage*tMinusAvarage;
+    }
+
+    b = numYX/denX;
+    a = averageY - b*averageX;
+    vx = numXT/denT;
+    x0 = averageX - vx*averageT;
+    vy = numYT/denT;
+    y0 = averageY - vy*averageT;
 
     //std::cout << "vx = " << vx << ", x0 = " << x0 << "   \t   vy = " << vy << ", y0 = " << y0 << '\t' << "v = " << sqrt(abs(vx*vy)) << '\n';
 
