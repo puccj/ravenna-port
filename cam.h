@@ -19,7 +19,10 @@ class Cam {
   static int consecutiveValue;
   static int minAreaValue;
   static const int maxConsecutiveFrames = 20;
-  static unsigned int globalFrameCount;   //needed for "cooperation" between cameras
+
+  //if the consecutiveFrame slider moves, _frameCount of each Cam need to be reset to prevent crash
+  //to do that, the static global counter goes to 0 when the slider moves and each Cam object check on that
+  static unsigned int globalFrameCount;
 
   //Parameters for shadow detection
   static int hueThreshold;
