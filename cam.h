@@ -2,73 +2,87 @@
 #define CAM_H
 
 #include <opencv2/core.hpp>
-#include <opencv2/imgproc.hpp>  //for cvtColor (convertion to B&W)
-#include <opencv2/videoio.hpp>  //for video capture
-#include <opencv2/highgui.hpp>  //for destroyAllWindow and imshow
+#include <opencv2/videoio.hpp>
+#include <opencv2/highgui.hpp>
+
+#define Tracks Cam::Trackbars
+#define Param Cam::Parameter
+
+struct Fit3d {
+  double a,b,x0,vx,y0,vy;
+};
 
 class Cam {
-  static int _framesForBG;                      //number of frames used to create BG (the same for every Cam)
-  static const int _maxConsecutiveFrames = 50;  //max number of consecutive frames used to calculate movement
-  static int _thresholdValue;   //threshold applied during binary conversion
-  static int _dilationValue;    //number of times dilation is applied
-  static int _minAreaValue;     //areas less then this pixels will be ignored
-  static int _consecutiveValue; //number of frames merged together to create borders
-  static int _globalFrameCount; //needed to deal with change in slidebar
-  static int _movedThresholdValue;  //threshold applied to detect when camera moved (in % of pixel different from the BG)
-  static cv::Point _mousePosition;  //coordinates of mouse
-  
-  static bool _showMargins;
+  //Parameters for foreground detection
+  static int thresholdValue;
+  static int dilationValue;
+  static int consecutiveValue;
+  static int minAreaValue;
+  static const int maxConsecutiveFrames = 20;
+  static unsigned int globalFrameCount;   //needed for "cooperation" between cameras
 
-  //callback functions called if events accour
+  //Parameters for shadow detection
+  static int hueThreshold;
+  static int saturationThreshold;
+  static int lowValueThreshold;
+  static int upValueThreshold;
+  static int dilationShadow;
+
+  //Parameters for head detection
+  static int minDistValue;
+  static int minRadiusValue;
+  static int maxRadiusValue;
+
+  //Parameters for fit of head positions
+  static const int maxFitLenght = 100;  //max number of past frame stored to calculate the fit with
+  static double fitLenght;              //number of past seconds to calcualate the fit with
+
+  static cv::Point mousePosition;
   static void onMouseClicked(int event, int x, int y, int flag, void* param);
   static void consecutiveChanged(int value, void*);
 
-  int _camIndex;          // = -1 if a recording has been opened
-  std::string _fileName;
+  bool _fileOpened;     //true if a video is opened, false if a camera is opened
+  std::string _camName; //needed to differentiate windows of different cameras
   cv::VideoCapture _cap;
-  cv::Mat _background;
-  cv::Mat _lastFrames[_maxConsecutiveFrames];   //store last 50 frames
-  int _frameCount;
-  cv::Point _origin;
+  cv::Mat _background;  //store the background image
+  cv::Point _origin;    //frame of reference's origin
   double _scaleFactor;  //[cm/pixel] number of cm corresponding to 1 pixel
-  int _crop[4];   //How much to crop the margins (0: up, 1: left, 2: down, 3: right)
-  std::vector<cv::Rect> _boxes;
+  double _fps;
+  int _frameCount;
+  cv::Mat _lastBinary[maxConsecutiveFrames];  //store last binary images to perform detection
+  cv::Mat _lastFrame;                         //store the last frame acquired
+  int _fitCount;
+  cv::Point3i _headPositions[maxFitLenght];   //store last positions of the head to perform fit
 
-  cv::Mat getBackground(cv::Mat* images_ptr); //get the background from an array of frames
-  void reset(); //re-open the camera/recording to reset the position at the beginning
-
-  //detects if the camera has moved
-  // bool moved();
+  void calculateFps();
 
  public:
-  static void setFramesForBG(int framesForBG) { _framesForBG = framesForBG; };
-  
-  //show trackbars for this window
-  static void showTrackbars(std::string winName = "Trackbars");
+  enum class Trackbars{All, Detection, Shadow, Circle};
+  enum class Parameter;
+  static void showTrackbars(Trackbars type = Trackbars::All);
+  static void setParameter(Parameter param, int value);
+  Cam(int camIndex, std::string camName = "Default"); 
+  Cam(std::string filePath, std::string camName = "Default");
 
-  //ask the user to synchronize the 2 cameras manually
-  // static void synchronize(Cam lhs, Cam rhs);
+  //show the background for 'delay' milliseconds (0 = untill a key is pressed)
+  void showBackground();
+  //calculate the starting background using given number of seconds
+  //(0(default) = entire video lenght for a file, 5 seconds for a camera)
+  void calculateBackground(double seconds = 0, double weight = 0.005);
+  void setOrigin();
+  void setScale();
 
-  //calculate the height of an object, using two cameras
-  // static void calculateHeight()
+  //calculate head positions for the current frame (needs to be called repeatedly)
+  //return false if the loop that calls this function should break
+  bool process(bool drawContours = false, bool drawRects = false, bool drawCircles = false);
 
-  Cam(int camIndex) : _camIndex{camIndex}, _frameCount{0}, _crop{0,0,0,0} { _cap.open(_camIndex); };
-  Cam(std::string fileName) : _camIndex{-1}, _fileName{fileName}, _frameCount{0}, _crop{0,0,0,0} { _cap.open(_fileName); };
-  ~Cam() { close(); };
-  // void open(int camIndex);
-  // void open(std::string fileName);
-  void close() { cv::destroyAllWindows(); };
+  //calculate the linear fit of trajectory and velocity using the head positions
+  //if draw == true, draw the trajectory fit over the original frame
+  Fit3d fit(bool draw = false);
 
-  void showBackground(int delay = 500, std::string winName = "Background"); //show BG for 'delay' milliseconds (0 means forever)
-  void calculateBackground(bool fast = false);
-  void setFrameCount(int frameCount) { _frameCount = frameCount; };
-  cv::Point origin() { return _origin; };
-  void setOrigin();     //show a random frame and ask the user to click the system of reference's origin
-  std::vector<cv::Rect> boxes() { return _boxes; };
-  void setScale();      //ask for a second point, to correct for eventual different zoom between cameras
-
-  //show current frame for 1000/fps milliseconds (0 fps means forever). Return false if 'q' key is pressed
-  bool show(int fps = 30, std::string winName = "default", bool showRectangle = true, bool showHeight = true, bool showBorders = true);
+  //show the last frame taken for 'delay' milliseconds time (0 = untill a key is pressd)
+  //return false if the loop that calls this function should break
+  bool show(int delay = 0, std::string winName = "Default");
 };
 
-#endif //CAM_H
+#endif

@@ -1,127 +1,50 @@
 #include "cam.h"
-
+#include <opencv2/imgproc.hpp>
 #include <iostream>
 #include <random>
 
-int Cam::_framesForBG = 50;
-int Cam::_thresholdValue = 50;  
-int Cam::_dilationValue = 2;   
-int Cam::_minAreaValue = 700;  
-int Cam::_consecutiveValue = 2;
-int Cam::_globalFrameCount = 0;
-cv::Point Cam::_mousePosition = {-1,-1};
+// -- Static private --
 
-bool Cam::_showMargins = false;
+int Cam::thresholdValue = 50;
+int Cam::dilationValue = 1;
+int Cam::consecutiveValue = 2;
+int Cam::minAreaValue = 700;
+unsigned int Cam::globalFrameCount = 0;
 
-void Cam::consecutiveChanged(int value, void*) {
-  _globalFrameCount = 0;
-  
-  if (value == 0) {
-    _consecutiveValue = 1;
-    return;
-  }
-}
+int Cam::hueThreshold = 48;
+int Cam::saturationThreshold = 64;
+int Cam::lowValueThreshold = 48;
+int Cam::upValueThreshold = 150;
+int Cam::dilationShadow = 1;
+
+int Cam::minDistValue = 30;
+int Cam::minRadiusValue = 8;
+int Cam::maxRadiusValue = 29;
+
+double Cam::fitLenght = 3;
+
+cv::Point Cam::mousePosition = {-1,-1};
 
 void Cam::onMouseClicked(int event, int x, int y, int flag, void* param) {
   if (event == cv::EVENT_LBUTTONDOWN) {
-    _mousePosition.x = x;
-    _mousePosition.y = y;
+    mousePosition.x = x;
+    mousePosition.y = y;
   }
 }
 
-cv::Mat Cam::getBackground(cv::Mat* frames_ptr) {
-  int rows = frames_ptr[0].rows;
-  int cols = frames_ptr[0].cols;
-  
-  cv::Mat background(rows, cols, CV_8UC1);  //store the background image
-
-  for (int x = 0; x < cols; x++) {
-    for (int y = 0; y < rows; y++) {
-      //create an array with the (x,y) pixel of all frames
-      uchar currentPixel[_framesForBG];
-
-      for (int i = 0; i < _framesForBG; i++) {
-        //insert sort: pos is the position where the element will be inserted
-        int pos = i-1;
-        while(pos>=0 && frames_ptr[i].at<uchar>(y,x) < currentPixel[pos]) {
-          currentPixel[pos+1] = currentPixel[pos];
-          pos--;
-        }
-        currentPixel[pos+1] = frames_ptr[i].at<uchar>(y,x);
-      }
-      //now currentPixel is a sorted array with (x,y) pixel by all frames.
-      //gets the median value and write it to the (x,y) pixel in background image
-      background.at<uchar>(y,x) = currentPixel[_framesForBG/2];
-    }
-  }
-  
-  return background;
+void Cam::consecutiveChanged(int value, void*) {
+  globalFrameCount = 0;
 }
 
-void Cam::reset() {
-  if (_camIndex != -1)
-    _cap.open(_camIndex);
-  else
-    _cap.open(_fileName);
-    
-  _frameCount = 0;
-}
+// -- Private --
 
-/*
-bool Cam::moved() {
-  cv::Mat last = _lastFrames[(_frameCount-1) % _maxConsecutiveFrames];
-  std::vector<cv::Point> blackPixels;
-  cv::findNonZero(last, blackPixels);
+void Cam::calculateFps() {
+  _fps = _cap.get(cv::CAP_PROP_FPS);
 
-  //std::cout << "DEBUG: The number of black pixels are: " << blackPixels.size() << '\n';
+  //if the property is zero, try to calculate it in a different way
+  if (_fps != 0)
+    return;
 
-  /* int posOfLastFrame = (_frameCount % _maxConsecutiveFrames)-1;
-  
-  //sum last _consecutiveFrames-1 frames
-  cv::Mat sum = _lastFrames[posOfLastFrame-1];
-  for (int i = 2; i < _consecutiveValue; i++) {
-    int posOfCurrent = posOfLastFrame - i;
-    if (posOfCurrent < 0)
-      posOfCurrent += _maxConsecutiveFrames;
-    sum += _lastFrames[posOfCurrent];
-  }
-
-  cv::Mat result;
-
-  //calculate difference with current frame and show it
-  cv::absdiff(_lastFrames[posOfLastFrame], sum, result);
-  
-  //'/
-  
-  return false;
-}
-*/
-
-//    --Public--
-
-void Cam::showTrackbars(std::string winName) {
-  cv::namedWindow(winName, cv::WINDOW_AUTOSIZE); //create window
-  cv::createTrackbar("Threshold", winName, &_thresholdValue, 100);
-  cv::createTrackbar("Dilation interaction",winName, &_dilationValue, 20);
-  cv::createTrackbar("Min Area", winName, &_minAreaValue, 1000);
-  cv::createTrackbar("Consecutive frames", winName, &_consecutiveValue, _maxConsecutiveFrames, consecutiveChanged);
-}
-
-/*
-void Cam::synchronize(Cam lhs, Cam rhs) {
-  //show the first frame of both
-  cv::Mat thisFrame;
-  cv::Mat otherFrame;
-
-  lhs.
-
-  _cap.read(thisFrame);
-  other.
-}
-*/
-
-/*
-double Cam::fps() {
   std::cout << "Calculating fps...";
   int num_frames = 60; //number of frames to capture
   time_t start, end;
@@ -134,352 +57,448 @@ double Cam::fps() {
 
   double seconds = difftime (end, start);
   std::cout << "     Done (" << num_frames/seconds << " fps)\n";
-  
-  //reset cam/video at the beginning
-  reset();
 
-  return num_frames / seconds;
-}
-*/
+  //Maybe I need to reset video/camera
 
-/*
-void Cam::open(int camIndex) {
-  _camIndex = camIndex;
-  _cap.open(camIndex);
-  _frameCount = 0;
+  _fps = num_frames / seconds;
 }
 
-void Cam::open(std::string fileName) {
-  _camIndex = -1;
-  _fileName = fileName;
-  _cap.open(fileName);
-  _frameCount = 0;
-}
-*/
+// -- Static public --
 
-void Cam::calculateBackground(bool fast) {
-  std::cout << "Getting Background... ";
-  
-  cv::Mat frames[_framesForBG];  //stored frames to calculate the bkgnd with  
-
-  if (_camIndex >= 0 || fast) { //if a camera is opened, get consecutive BG frames..
-    for (int i = 0; i < _framesForBG; i++) {
-      _cap.read(frames[i]);
-      cv::cvtColor(frames[i], frames[i], cv::COLOR_BGR2GRAY);
-    }
+void Cam::showTrackbars(Trackbars type) {
+  switch (type)
+  {
+   case Trackbars::All: {
+    std::string winName = "All Trackbars";
+    cv::namedWindow(winName, cv::WINDOW_NORMAL);
+    cv::createTrackbar("Threshold", winName, &thresholdValue, 100);
+    cv::createTrackbar("Dilation interaction",winName, &dilationValue, 20);
+    cv::createTrackbar("Min Area", winName, &minAreaValue, 1000);
+    cv::createTrackbar("Consecutive frames", winName, &consecutiveValue, maxConsecutiveFrames, consecutiveChanged);
+    cv::setTrackbarMin("Consecutive frames", winName, 1);
+    cv::createTrackbar("Hue threshold", winName, &hueThreshold, 150);
+    cv::createTrackbar("Saturation threshold", winName, &saturationThreshold, 150);
+    cv::createTrackbar("Lower Value Threshold", winName, &lowValueThreshold, 200);
+    cv::createTrackbar("Upper Value Threshold", winName, &upValueThreshold, 200);
+    cv::createTrackbar("Dilation", winName, &dilationShadow, 5);  
+    cv::createTrackbar("Min distance", winName, &minDistValue, 100);
+    cv::setTrackbarMin("Min distance", winName, 1);
+    cv::createTrackbar("Min radius", winName, &minRadiusValue, 50);
+    cv::createTrackbar("Max radius", winName, &maxRadiusValue, 100);
+    return;
+   }
+   case Trackbars::Detection: {
+    std::string winName = "Detection Trackbars";
+    cv::namedWindow(winName);
+    cv::createTrackbar("Threshold", winName, &thresholdValue, 100);
+    cv::createTrackbar("Dilation interaction",winName, &dilationValue, 20);
+    cv::createTrackbar("Min Area", winName, &minAreaValue, 1000);
+    cv::createTrackbar("Consecutive frames", winName, &consecutiveValue, maxConsecutiveFrames, consecutiveChanged);
+    cv::setTrackbarMin("Consecutive frames", winName, 1);
+    return;
+   }
+   case Trackbars::Shadow: {
+    std::string winName = "Shadow Trackbars";
+    cv::namedWindow(winName);
+    cv::createTrackbar("Hue threshold", winName, &hueThreshold, 150);
+    cv::createTrackbar("Saturation threshold", winName, &saturationThreshold, 150);
+    cv::createTrackbar("Lower Value Threshold", winName, &lowValueThreshold, 200);
+    cv::createTrackbar("Upper Value Threshold", winName, &upValueThreshold, 200);
+    cv::createTrackbar("Dilation", winName, &dilationShadow, 5);  
+    return;
+   }
+   case Trackbars::Circle:{
+    std::string winName = "Circle Trackbars";
+    cv::namedWindow(winName);
+    cv::createTrackbar("Min distance", winName, &minDistValue, 100);
+    cv::setTrackbarMin("Min distance", winName, 1);
+    cv::createTrackbar("Min radius", winName, &minRadiusValue, 50);
+    cv::createTrackbar("Max radius", winName, &maxRadiusValue, 100);
+   }
   }
-  else if (_camIndex == -1) { //..otherwise, if a video file has been opened, get random frames to bild the BG
-    std::random_device rd;
-    std::uniform_int_distribution<int> dist(0, _cap.get(cv::CAP_PROP_FRAME_COUNT)-1);
-    for (int i = 0; i < _framesForBG; i++) {
-      int rand = dist(rd);
-      //std::cout << "Debug: rand = " << rand << '\n';
-      _cap.set(cv::CAP_PROP_POS_FRAMES, rand); //set the frame id to read that particular frame
-      _cap.read(frames[i]);  //read that frame
-      cv::cvtColor(frames[i], frames[i], cv::COLOR_BGR2GRAY); //convert it in B&W
-    }
+}
+
+enum class Cam::Parameter{
+  thresholdValue, dilationValue, consecutiveValue, minAreaValue,
+  hueThreshold, saturationThreshold, lowValueThreshold, upValueThreshold, dilationShadow,
+  minDistValue, minRadiusValue, maxRadiusValue,
+  fitLenght
+};
+
+void Cam::setParameter(Parameter param, int value) {
+  //TO DO
+}
+
+// -- Public --
+
+Cam::Cam(int camIndex, std::string camName) 
+  : _frameCount{0}, _fitCount{0}, _camName{camName}, _origin{cv::Point{-1,-1}}, 
+  _fileOpened{false}, _cap{cv::VideoCapture(camIndex)} { 
+  
+  if (camName == "Default")
+    _camName = std::to_string(camIndex);
+
+  calculateFps();
+}
+
+Cam::Cam(std::string filePath, std::string camName)
+  : _frameCount{0}, _fitCount{0}, _camName{camName}, _origin{cv::Point{-1,-1}}, 
+  _fileOpened{true}, _cap{cv::VideoCapture(filePath)} {
+
+  if (camName == "Default")
+    _camName = filePath;
+
+  calculateFps();
+}
+
+void Cam::showBackground() {
+  cv::imshow(_camName + ": Background", _background/255);
+}
+
+void Cam::calculateBackground(double seconds, double weight) {
+  std::cout << "Getting color background... ";
+  
+  int frames = seconds * _fps;
+
+  if (frames == 0 && !_fileOpened)
+    frames = 60;
+  cv::Mat firstFrame;
+  _cap.read(firstFrame);
+  
+  cv::Mat acc(firstFrame.size(), CV_32FC3);
+
+  int counter = 1;
+  while (true) {
+    cv::Mat thisFrame;
+    _cap.read(thisFrame);
+    counter++;
+    if (thisFrame.empty())
+      break;
+    if (counter > frames && frames != 0)
+      break;
+
+    cv::accumulateWeighted(thisFrame, acc, weight);
   }
 
-  _background = getBackground(frames);
-  reset();
+  //if cap is a file, set to the beggining of the video
+  if (_fileOpened)
+    _cap.set(cv::CAP_PROP_POS_FRAMES, 0);
+
   std::cout << "     Done\n";
-}
-
-void Cam::showBackground(int delay, std::string winName) {
-  cv::imshow(winName, _background);
-  cv::waitKey(delay);
+  _background = acc;
 }
 
 void Cam::setOrigin() {
-  cv::namedWindow("Select origin");
-  cv::setMouseCallback("Select origin", onMouseClicked);
+  cv::namedWindow(_camName + ": Select origin");
+  cv::setMouseCallback(_camName + ": Select origin", onMouseClicked);
 
-  int key;
-
-  if (_camIndex >= 0) {
-    //for a camera, take the current frame
+  if (_fileOpened)
+    std::cout << "Click on the system of reference's origin. Press 'n' to show another (random) frame. Press 'space' to confirm.\n";
+  else
     std::cout << "Click on the system of reference's origin. Press 'space' to confirm.\n";
 
-    do {
-      key = -1;
-      cv::Mat thisFrame;
-      _cap.read(thisFrame);
+  std::random_device rd;
+  std::uniform_int_distribution<int> dist(0, _cap.get(cv::CAP_PROP_FRAME_COUNT)-1);
+  int key;
+  do {
+    key = 1;
 
-      cv::Mat frameWithCross = thisFrame.clone();
-
-      //draw a cross
-      if (_mousePosition.x != -1 && _mousePosition.y != -1) {
-        cv::drawMarker(frameWithCross, _mousePosition,{0,0,255},1,20,2);
-      }
-
-      cv::imshow("Select origin", frameWithCross);
-
-      key = cv::waitKey(10);
-    }
-    while(key != ' ');
-  }
-  else {
-    //for a video, take a random frame
-    std::cout << "Click on the system of reference's origin. Press 'n' to show another (random) frame. Press 'space' to confirm.\n";
-    std::random_device rd;
-    std::uniform_int_distribution<int> dist(0, _cap.get(cv::CAP_PROP_FRAME_COUNT)-1);
-    
-    do {
-      key = -1;
-
+    cv::Mat frame;
+    if (_fileOpened) {
       int rand = dist(rd);
-      //std::cout << "Debug: rand is: " << rand << '\n';
-      cv::Mat randomFrame;
       _cap.set(cv::CAP_PROP_POS_FRAMES, rand);
-      _cap.read(randomFrame);
-      cv::imshow("Select origin", randomFrame);
-      
-      while(key != ' ' && key != 'n') {
-        key = cv::waitKey(10);
-        cv::Mat frameWithCross = randomFrame.clone();
-
-        //draw a cross
-        if (_mousePosition.x != -1 && _mousePosition.y != -1) {
-          cv::drawMarker(frameWithCross, _mousePosition,{0,0,255},1,20,2);
-        }
-        cv::imshow("Select origin", frameWithCross);
-      }
     }
-    while(key != ' ');
-  }
+    _cap.read(frame);
 
-  _origin = _mousePosition;
-  cv::destroyWindow("Select origin");
+    do {
+      cv::Mat frameWithCross = frame.clone();
+      //draw a cross
+      if (mousePosition.x != -1 && mousePosition.y != -1) {
+        cv::drawMarker(frameWithCross, mousePosition,{0,0,255},1);
+      }
+      cv::imshow(_camName + ": Select origin", frameWithCross);
+      key = cv::waitKeyEx(10);
+
+      //move the cross
+      if (key == 2424832)       //left
+        mousePosition.x--;
+      else if (key == 2555904)  //right
+        mousePosition.x++;
+      else if (key == 2490368)  //up
+        mousePosition.y--;
+      else if (key == 2621440)  //down
+        mousePosition.y++;
+    }
+    while(_fileOpened && key != 'n' && key != ' ');
+  }
+  while(key != ' ');
+
+  _origin = mousePosition;
+  cv::destroyWindow(_camName + ": Select origin");
+
+  if (_fileOpened)
+    _cap.set(cv::CAP_PROP_POS_FRAMES, 0);
 }
 
 void Cam::setScale() {
-  //reset _mousePosition
-  _mousePosition = {-1,-1};
+  if (_origin == cv::Point{-1,-1})
+    setOrigin();
 
-  cv::namedWindow("Select second point");
-  cv::setMouseCallback("Select second point", onMouseClicked);
-  
-  int key;
+  mousePosition = {-1,-1};  //reset mouse position
+  cv::namedWindow(_camName + ": Select second point");
+  cv::setMouseCallback(_camName + ": Select second point", onMouseClicked);
 
-  if (_camIndex >= 0) {
-    //for a camera, take the current frame
+  if (_fileOpened)
+    std::cout << "Click on the system of reference's origin. Press 'n' to show another (random) frame. Press 'space' to confirm.\n";
+  else
     std::cout << "Click on a second point. Press 'space' to confirm.\n";
 
+  std::random_device rd;
+  std::uniform_int_distribution<int> dist(0, _cap.get(cv::CAP_PROP_FRAME_COUNT)-1);  
+  int key;
+  do {
+    key = -1;
+    cv::Mat frame;
+    if (_fileOpened) {
+      int rand = dist(rd);
+      _cap.set(cv::CAP_PROP_POS_FRAMES, rand);
+    }
+    _cap.read(frame);
+
     do {
-      key = -1;
-      cv::Mat thisFrame;
-      _cap.read(thisFrame);
-
-      cv::Mat frameWithCross = thisFrame.clone();
-
+      cv::Mat frameWithCross = frame.clone();
       //draw origin point
       cv::drawMarker(frameWithCross, _origin, {0,0,255}, 3, 5, 1);
 
       //draw a cross
-      if (_mousePosition.x != -1 && _mousePosition.y != -1) {
-        cv::drawMarker(frameWithCross, _mousePosition,{0,0,255},1,20,2);
+      if (mousePosition.x != -1 && mousePosition.y != -1) {
+        cv::drawMarker(frameWithCross, mousePosition,{0,0,255},1);
       }
-
-      cv::imshow("Select second point", frameWithCross);
-
-      key = cv::waitKey(10);
-    }
-    while(key != ' ');
-  }
-  else {
-    //for a video, take a random frame
-    std::cout << "Click on the system of reference's origin. Press 'n' to show another (random) frame. Press 'space' to confirm.\n";
-    std::random_device rd;
-    std::uniform_int_distribution<int> dist(0, _cap.get(cv::CAP_PROP_FRAME_COUNT)-1);
-    
-    do {
-      key = -1;
-
-      int rand = dist(rd);
-      //std::cout << "Debug: rand is: " << rand << '\n';
-      cv::Mat randomFrame;
-      _cap.set(cv::CAP_PROP_POS_FRAMES, rand);
-      _cap.read(randomFrame);
-      cv::imshow("Select second point", randomFrame);
+      cv::imshow(_camName + ": Select second point", frameWithCross);
+      key = cv::waitKeyEx(10);
       
-      while(key != ' ' && key != 'n') {
-        key = cv::waitKey(10);
-        cv::Mat frameWithCross = randomFrame.clone();
-
-        //draw origin point
-        cv::drawMarker(frameWithCross, _origin, {0,0,255}, 3, 5, 1);
-
-        //draw a cross
-        if (_mousePosition.x != -1 && _mousePosition.y != -1) {
-          cv::drawMarker(frameWithCross, _mousePosition,{0,0,255},1,20,2);
-        }
-        cv::imshow("Select second point", frameWithCross);
-      }
+      //move the cross
+      if (key == 2424832)       //left
+        mousePosition.x--;
+      else if (key == 2555904)  //right
+        mousePosition.x++;
+      else if (key == 2490368)  //up
+        mousePosition.y--;
+      else if (key == 2621440)  //down
+        mousePosition.y++;
     }
-    while(key != ' ');
+    while (_fileOpened && key != ' ' && key != 'n');
   }
-
-  cv::destroyWindow("Select second point");
+  while (key != ' ');
+  
+  cv::destroyWindow(_camName + ": Select second point");
   
   //calculate scale factor
   double realDistance;
   std::cout << "Insert the distance (cm) between the points: ";
   std::cin >> realDistance;
+  
+  _scaleFactor = realDistance / cv::norm(_origin - mousePosition);
+  std::cout << "Scale factor is " << _scaleFactor << " cm/pixel\n";
 
-  _scaleFactor = realDistance / cv::norm(_origin - _mousePosition);
-  std::cout << "DEBUG: factor is " << _scaleFactor << '\n';
+  if (_fileOpened)
+    _cap.set(cv::CAP_PROP_POS_FRAMES, 0);
 }
 
-bool Cam::show(int fps, std::string winName, bool showRectangle, bool showHeight, bool showBorders) {
-  if (winName == "default") {
-    if (_camIndex > 0)
-      winName = "Camera " + std::to_string(_camIndex);
-    else
-      winName = _fileName;
-  }
+bool Cam::process(bool drawContours, bool drawRects, bool drawCircles) {
+  cv::Mat grayBackground;
+  cv::Mat hsvBackground;
+  cv::cvtColor(_background,grayBackground, cv::COLOR_BGR2GRAY);
+  grayBackground.convertTo(grayBackground, CV_8U);
+  cv::cvtColor(_background, hsvBackground, cv::COLOR_BGR2HSV);
 
-  if (fps < 0) {
-    std::cout << "WARNING: negative value set for fps. Using standard 30 fps instead.\n";
-    fps = 30;
-  }
-
-  //clear vector of boxes
-  _boxes.clear();
-
-  //read a frame
-  cv::Mat thisFrame;
-  _cap.read(thisFrame);
+  cv::Mat frame;
+  _cap.read(frame);
   
-  if (thisFrame.empty()) {
+  if (frame.empty()) {
     std::cout << "End of video\n";
     return false;
   }
 
-  //calculate everything only if it's needed
-  if (showRectangle || showBorders || _showMargins) {
-    //save the original frame
-    cv::Mat origFrame;
-    thisFrame.copyTo(origFrame);
+  _lastFrame = frame.clone();
+  cv::Mat grayFrame;
+  cv::Mat hsvFrame;
+  cv::cvtColor(frame, hsvFrame, cv::COLOR_BGR2HSV);
+  cv::cvtColor(frame, grayFrame, cv::COLOR_BGR2GRAY);
 
-    //draw margins
-    if (_showMargins) {
-      cv::line(origFrame, {_crop[1], _crop[0]}, {thisFrame.cols - _crop[3], _crop[0]}, {255,0,0},2); //up line
-      cv::line(origFrame, {thisFrame.cols - _crop[3], _crop[0]}, {thisFrame.cols - _crop[3], thisFrame.rows - _crop[2]}, {255,0,0},2);
-      cv::line(origFrame, {thisFrame.cols - _crop[3], thisFrame.rows - _crop[2]}, {_crop[1], thisFrame.rows - _crop[2]}, {255,0,0},2);
-      cv::line(origFrame, {_crop[1], thisFrame.rows - _crop[2]}, {_crop[1], _crop[0]}, {255,0,0},2);
+  // -- Foreground detection --
+  cv::absdiff(grayFrame, grayBackground, frame);                        //subtract background from image
+  cv::threshold(frame, frame, thresholdValue, 255, cv::THRESH_BINARY);  //thresholding to convert to binary
+  cv::dilate(frame, frame, cv::Mat(), cv::Point(-1,-1), dilationValue); //dilate the image (no inside dark regions)
+  
+  _lastBinary[_frameCount % consecutiveValue] = frame;
+  _frameCount++;
+
+  //skip if list is not already full
+  if (_frameCount < consecutiveValue)
+    return true;
+  
+  //add all frames in list
+  cv::Mat sum = _lastBinary[0];
+  for (auto i = 1; i < consecutiveValue; ++i)
+    sum += _lastBinary[i];
+
+  // -- Shadow detection --
+
+  std::vector<cv::Point> whitePoints; //store white points in sum
+  cv::findNonZero(sum, whitePoints);
+
+  cv::Mat shadow(hsvFrame.size(), CV_8UC1, cv::Scalar(0)); //store pixels considered to be shadow
+  for (auto point : whitePoints) {
+    //color is stored in a Vec3b. val[0]=Hue, val[1]=Saturation, val[2]=Value
+    //a pixel is a shadow if the color has approxiamtetly the same hue and sat, but lower value than the bg
+    cv::Vec3b frameColor = hsvFrame.at<cv::Vec3b>(point);
+    cv::Vec3b bgColor = hsvBackground.at<cv::Vec3b>(point);
+    if (std::abs(frameColor.val[0] - bgColor.val[0]) < hueThreshold
+              && frameColor.val[1] - bgColor.val[1] < saturationThreshold 
+              && frameColor.val[2] * 1.0 / bgColor.val[2] > lowValueThreshold/100.0 
+              && frameColor.val[2] * 1.0 / bgColor.val[2] < upValueThreshold/100.0) {
+      shadow.at<uchar>(point) = 255;
     }
+  }
+  cv::dilate(shadow, shadow, cv::Mat(), cv::Point(-1,-1), dilationShadow);
 
-    //calculate everything only if it's needed
-    if (showRectangle || showBorders) {
+  //remove shadows from detected image
+  sum -= shadow;
+  
+  //find contours and draw them
+  std::vector<cv::Mat> contours;
+  cv::findContours(sum, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+  if (drawContours)
+    cv::drawContours(_lastFrame, contours, -1, {255,0,0}, 1);
 
-      cv::cvtColor(thisFrame, thisFrame, cv::COLOR_BGR2GRAY);                       //convert to grayscale
-      cv::absdiff(thisFrame, _background, thisFrame);                               //subtract background from image
-      cv::threshold(thisFrame, thisFrame, _thresholdValue, 255, cv::THRESH_BINARY); //thresholding to convert to binary
-      cv::dilate(thisFrame,thisFrame, cv::Mat(), cv::Point(-1,-1), _dilationValue); //dilate the image (no inside dark regions)
+  // -- Head detection --
 
-      if (_globalFrameCount < _frameCount)
-        _frameCount = 0;
+  //find cirlces
+  cv::medianBlur(grayFrame, grayFrame, 3);
+  std::vector<cv::Vec3f> circles;
+  cv::HoughCircles(grayFrame, circles, cv::HOUGH_GRADIENT, 1, minDistValue, 100, 30, minRadiusValue, maxRadiusValue);
+
+  //for each circle, check if it's inside a contour
+  for (auto circle : circles) {
+    cv::Point center(circle[0], circle[1]);
+    bool inside = false;
+    for (auto contour : contours) {
+      //skip if area of contour is too little (it's probably noise)
+      if (cv::contourArea(contour) < minAreaValue)
+        continue;
       
-      _lastFrames[_frameCount % _maxConsecutiveFrames] = thisFrame;
-      _frameCount++;
-      _globalFrameCount++;
+      //otherwise draw a rectangle
+      cv::Rect r = cv::boundingRect(contour);
+      if (drawRects)
+        cv::rectangle(_lastFrame, r, {0,255,0}, 2);
 
-      //skip if list is not already full
-      if (_frameCount >= _consecutiveValue) {
-
-        //sum the last "_consecutiveFrames" frames in list
-        int posOfLastFrame = ((_frameCount-1) % _maxConsecutiveFrames);
-        cv::Mat sum = _lastFrames[posOfLastFrame].clone();
-      
-        for (int i = 1; i < _consecutiveValue; i++) {
-          int posOfCurrent = posOfLastFrame - i;
-          if (posOfCurrent < 0)
-            posOfCurrent += _maxConsecutiveFrames;
-          sum += _lastFrames[posOfCurrent];
-        }
-
-        //find the contours and draw them
-        std::vector<cv::Mat> contours;
-        cv::findContours(sum, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
-        cv::drawContours(origFrame, contours, -1, {255,0,0}, 1);
-
-        for (auto contour : contours) {
-          //skip if the area is too little
-          if (cv::contourArea(contour) < _minAreaValue)
-            continue;
-
-          //create a rectangle
-          cv::Rect r = cv::boundingRect(contour);
-          
-          //skip if it is outside the margins
-          if (r.x + r.width < _crop[1] || r.x > thisFrame.cols - _crop[3] || r.y + r.height < _crop[0] || r.y > thisFrame.rows - _crop[2])
-            continue;
-
-          //draw the rectangle
-          cv::rectangle(origFrame, r, {0,255,0}, 2);
-
-          double distance = -1;
-          if (showHeight) {
-            cv::Point center = {r.x + r.width/2, r.y + r.height/2};
-            distance = cv::norm(center-_origin);
-            cv::putText(origFrame,std::to_string((int) distance), {center.x, center.y}, cv::FONT_HERSHEY_SIMPLEX, 1, {0,255,255});
-          }
-
-          //add rect to boxes
-          _boxes.push_back({(r.x-_origin.x)*_scaleFactor, (r.y-_origin.y)*_scaleFactor, r.width*_scaleFactor, r.height*_scaleFactor});
-        }
+      //check if head is inside rectangle
+      if (center.inside(r)) {
+      //if (cv::pointPolygonTest(contour, center, false) >= 0) {
+        inside = true;
+        break;
       }
-      cv::imshow(winName, origFrame);
-
-      /*check if camera has moved
-      if (moved())
-        calculateBackground();
-      */
     }
-  }
-  else {
-    cv::imshow(winName, thisFrame);
+
+    //skip if point is not inside a contour
+    if (!inside)
+      continue;
+    
+    //otherwise add to fit
+    _headPositions[_fitCount % maxFitLenght] = {center.x, center.y, _frameCount};
+    _fitCount++;
+
+    //draw the circle
+    if (drawCircles)
+      cv::circle(_lastFrame, center, 1, {255,0,255}, 3, cv::LINE_AA);
   }
 
-  int delay = 0;
-  if (fps != 0)
-    delay = 1000/fps;
+  return true;
+}
+
+Fit3d Cam::fit(bool draw) {
+  /* Linear fit of: 
+   * - trajectory (assumed linear)  (y = a + bx)      y(x)
+   * - vx (assumed constant)        (x = x0 + vx *t)  x(t)
+   * - vy (assumed constant)        (y = y0 + vy *t)  y(t)
+   */
   
-  int key = cv::waitKey(delay);
+  int size = maxFitLenght;
+  if (_fitCount < maxFitLenght)
+    size = _fitCount;
 
-  if (key == 'q')
+  //convert seconds in number of frames
+  int framesForFit = fitLenght * _fps;
+
+  double sumX = 0;
+  double sumY = 0;
+  double sumT = 0;
+  int skipped = 0;
+  for (auto i = 0; i < size; ++i) {
+    //skip if frame is too old
+    if (_frameCount - _headPositions[i].z > framesForFit) {
+      skipped++;
+      continue;
+    }
+
+    sumX += _headPositions[i].x;
+    sumY += _headPositions[i].y;
+    sumT += _headPositions[i].z;
+  }
+  double averageX = sumX / (size-skipped);
+  double averageY = sumY / (size-skipped);
+  double averageT = sumT / (size-skipped);
+
+  double numYX = 0;
+  double numXT = 0;
+  double numYT = 0;
+  double denX = 0;
+  double denT = 0;
+  for (auto i = 0; i < size; ++i) {
+    //skip if frame is too old
+    if (_frameCount - _headPositions[i].z > framesForFit)
+      continue;
+
+    double xMinusAvarage = _headPositions[i].x - averageX;
+    double tMinusAvarage = _headPositions[i].z - averageT;
+    numYX += xMinusAvarage*(_headPositions[i].y - averageT);
+    numXT += tMinusAvarage*(_headPositions[i].x - averageX);
+    numYT += tMinusAvarage*(_headPositions[i].y - averageY);
+    denX += xMinusAvarage*xMinusAvarage;
+    denT += tMinusAvarage*tMinusAvarage;
+  }
+
+  double b = numYX/denX;
+  double a = averageY - b*averageX;
+  
+  Fit3d result;
+  result.b = numYX/denX;
+  result.a = averageY - result.b*averageX;
+  result.vx = numXT/denT;
+  result.x0 = averageX - result.vx*averageT;
+  result.vy = numYT/denT;
+  result.y0 = averageY - result.vy*averageT;
+
+  if (draw) {
+    int cols = _lastFrame.cols;
+    // int a = result.a;
+    // int b = result.b;
+    cv::line(_lastFrame, {0,a}, {cols, a + b*cols}, {0,0,255}, 2);
+  }
+
+  //If I want: Remove some points and redo the fit
+
+  return result;
+}
+
+bool Cam::show(int delay, std::string winName) {
+  if (winName == "Default")
+    winName = _camName + ": Result";
+
+  cv::imshow(winName, _lastFrame);
+  int k = cv::waitKey(delay);
+  if (k == 'q')
     return false;
-  if (key == 'b') {
-    calculateBackground();
-    showBackground();
-  }    
-  if (key == 't')
-    showTrackbars();
-  if (key == 'p')
-    cv::waitKey(0);
-  if (key == 'r')
-    reset();
-  if (key == 'm')
-    _showMargins = !_showMargins;
-  
-  //Moving margins: WASD for up(0) and left(1) margins, IJKL for down(2) and right(3)
-  if (key == 'w' && _crop[0] > 0)
-    _crop[0]--;
-  if (key == 's')
-    _crop[0]++;
-  if (key == 'a' && _crop[1] > 0)
-    _crop[1]--;
-  if (key == 'd')
-    _crop[1]++;
-  
-  if (key == 'k' && _crop[2] > 0)
-    _crop[2]--;
-  if (key == 'i')
-    _crop[2]++;
-  if (key == 'l' && _crop[3] > 0)
-    _crop[3]--;
-  if (key == 'j')
-    _crop[3]++;
-
   return true;
 }

@@ -6,9 +6,10 @@ int main() {
   int thresholdValue = 125;
   int minAreaValue = 150;
   int maxAreaValue = 200;
-  int minDistValue = 30;
-  int minRadiusValue = 8;
-  int maxRadiusValue = 29; //35
+
+  int minDistValue = 30;    //20
+  int minRadiusValue = 8;   //5
+  int maxRadiusValue = 29;  //29
 
 
   cv::namedWindow("Trackbars");
