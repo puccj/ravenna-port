@@ -17,9 +17,9 @@ int Cam::lowValueThreshold = 48;
 int Cam::upValueThreshold = 150;
 int Cam::dilationShadow = 1;
 
-int Cam::minDistValue = 30;
-int Cam::minRadiusValue = 8;
-int Cam::maxRadiusValue = 29;
+int Cam::minDistValue = 20;     //30  20
+int Cam::minRadiusValue = 5;    //8   5
+int Cam::maxRadiusValue = 29;   //29
 
 double Cam::fitLenght = 3;
 
@@ -130,7 +130,7 @@ void Cam::setParameter(Parameter param, int value) {
 // -- Public --
 
 Cam::Cam(int camIndex, std::string camName) 
-  : _frameCount{0}, _fitCount{0}, _camName{camName}, _origin{cv::Point{-1,-1}}, 
+  : _frameCount{0}, _fitCount{0}, _camName{camName}, _origin{cv::Point{-1,-1}}, _scaleFactor{0}, 
   _fileOpened{false}, _cap{cv::VideoCapture(camIndex)} { 
   
   if (camName == "Default")
@@ -140,7 +140,7 @@ Cam::Cam(int camIndex, std::string camName)
 }
 
 Cam::Cam(std::string filePath, std::string camName)
-  : _frameCount{0}, _fitCount{0}, _camName{camName}, _origin{cv::Point{-1,-1}}, 
+  : _frameCount{0}, _fitCount{0}, _camName{camName}, _origin{cv::Point{-1,-1}}, _scaleFactor{0}, 
   _fileOpened{true}, _cap{cv::VideoCapture(filePath)} {
 
   if (camName == "Default")
@@ -335,6 +335,7 @@ bool Cam::process(bool drawContours, bool drawRects, bool drawCircles) {
     
   _lastBinary[_frameCount % consecutiveValue] = frame;
   _frameCount++;
+  globalFrameCount++;
 
   //skip if list is not already full
   if (_frameCount < consecutiveValue)
@@ -410,7 +411,6 @@ bool Cam::process(bool drawContours, bool drawRects, bool drawCircles) {
     //otherwise add to fit
     _headPositions[_fitCount % maxFitLenght] = {center.x, center.y, _frameCount};
     _fitCount++;
-    globalFrameCount++;
 
     //draw the circle
     if (drawCircles)
@@ -420,7 +420,7 @@ bool Cam::process(bool drawContours, bool drawRects, bool drawCircles) {
   return true;
 }
 
-Fit3d Cam::fit(bool draw) {
+void Cam::fit(bool drawFit) {
   /* Linear fit of: 
    * - trajectory (assumed linear)  (y = a + bx)      y(x)
    * - vx (assumed constant)        (x = x0 + vx *t)  x(t)
@@ -483,16 +483,17 @@ Fit3d Cam::fit(bool draw) {
   result.vy = numYT/denT;
   result.y0 = averageY - result.vy*averageT;
 
-  if (draw) {
+  if (drawFit) {
     int cols = _lastFrame.cols;
     // int a = result.a;
     // int b = result.b;
     cv::line(_lastFrame, {0,a}, {cols, a + b*cols}, {0,0,255}, 2);
   }
 
-  //If I want: Remove some points and redo the fit
+  //If I want: Remove some points (if two points are taken for the same time,
+  //consider only the closest to the trajectory fit) and redo the fit
 
-  return result;
+  _fitResult = result;
 }
 
 bool Cam::show(int delay, std::string winName) {
@@ -504,4 +505,25 @@ bool Cam::show(int delay, std::string winName) {
   if (k == 'q')
     return false;
   return true;
+}
+
+cv::Point Cam::position(bool drawPoint, double delay) {
+  double time = _frameCount+2 - (delay*_fps); //+2 to take extreme pos of head
+
+  //calculate absolut position
+  double x = _fitResult.x0 + _fitResult.vx*time;
+  double y = _fitResult.y0 + _fitResult.vy*time;
+
+  if (drawPoint)
+    cv::circle(_lastFrame,{x,y},1,{0,255,0},3,cv::LINE_AA);
+  
+  //return position (relative to the origin point and in cm unit)
+  if (_scaleFactor == 0)
+    setScale();
+
+  return { (x-_origin.x)*_scaleFactor , (y-_origin.y)*_scaleFactor };
+}
+
+void Cam::putText(cv::String text, cv::Point org) {
+  cv::putText(_lastFrame, text, org,cv::FONT_HERSHEY_SIMPLEX, 1, {0,255,255});
 }

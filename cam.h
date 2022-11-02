@@ -56,6 +56,7 @@ class Cam {
   cv::Mat _lastFrame;                         //store the last frame acquired
   int _fitCount;
   cv::Point3i _headPositions[maxFitLenght];   //store last positions of the head to perform fit
+  Fit3d _fitResult;
 
   void calculateFps();
 
@@ -64,6 +65,7 @@ class Cam {
   enum class Parameter;
   static void showTrackbars(Trackbars type = Trackbars::All);
   static void setParameter(Parameter param, int value);
+
   Cam(int camIndex, std::string camName = "Default"); 
   Cam(std::string filePath, std::string camName = "Default");
 
@@ -80,12 +82,19 @@ class Cam {
   bool process(bool drawContours = false, bool drawRects = false, bool drawCircles = false);
 
   //calculate the linear fit of trajectory and velocity using the head positions
-  //if draw == true, draw the trajectory fit over the original frame
-  Fit3d fit(bool draw = false);
+  //if drawFit == true, draw the trajectory fit over the _lastFrame
+  void fit(bool drawFit = false);
 
   //show the last frame taken for 'delay' milliseconds time (0 = untill a key is pressd)
   //return false if the loop that calls this function should break
   bool show(int delay = 0, std::string winName = "Default");
+
+  //calculate and return head position (in cm and relative to originPoint) 'delay' milliseconds ago. 
+  //If delay == 0, consider the current (last) frame
+  cv::Point position(bool drawPoint = false, double delay = 0);
+
+  //write text of _lastFrame
+  void putText(cv::String text, cv::Point org = {10,30});
 };
 
 #endif
