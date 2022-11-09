@@ -517,11 +517,28 @@ cv::Point Cam::position(bool drawPoint, double delay) {
   if (drawPoint)
     cv::circle(_lastFrame,{x,y},1,{0,255,0},3,cv::LINE_AA);
   
-  //return position (relative to the origin point and in cm unit)
   if (_scaleFactor == 0)
     setScale();
 
+  //return position (relative to the origin point and in cm unit)
   return { (x-_origin.x)*_scaleFactor , (y-_origin.y)*_scaleFactor };
+}
+
+double Cam::distance(bool drawPoint, double delay) {
+  double time = _frameCount+2 - (delay*_fps); //+2 to take extreme pos of head
+
+  //calculate absolut position
+  double x = _fitResult.x0 + _fitResult.vx*time;
+  double y = _fitResult.y0 + _fitResult.vy*time;
+
+  if (drawPoint)
+    cv::circle(_lastFrame,{x,y},1,{0,255,0},3,cv::LINE_AA);
+
+  if (_scaleFactor == 0)
+    setScale();
+
+  //return distance (in cm unit)
+  return cv::norm(_origin - cv::Point{x,y})*_scaleFactor;
 }
 
 void Cam::putText(cv::String text, cv::Point org) {

@@ -93,6 +93,10 @@ class Cam {
   //If delay == 0, consider the current (last) frame
   cv::Point position(bool drawPoint = false, double delay = 0);
 
+  //calculate and return the distance between head position and origin (in cm and relative)
+  //'delay' milliseconds ago. If delay == 0, consider the current (last) frame
+  double distance(bool drawPoint = false, double delay = 0);
+
   //write text of _lastFrame
   void putText(cv::String text, cv::Point org = {10,30});
 };

@@ -3,9 +3,8 @@
 #include <iostream>
 
 int main() {
-
-  int craneHeight = 600;
-  int camDistance = 100;
+  int craneHeight = 2225;
+  int camDistance = 723;
 
   Cam right("sample.mp4");
   Cam left("sample2.mp4");
@@ -13,11 +12,15 @@ int main() {
   left.calculateBackground();
   Cam::showTrackbars();
   
-  //right.setOrigin();
-  //right.setScale();
+  right.setOrigin();
+  left.setOrigin();
+  right.setScale();
+  left.setScale();
+  //set again origin to move it on top-left corner
+  right.setOrigin();
+  left.setOrigin();
   
   while (true) {
-    
     if (!right.process(false, true, true))
       break;
     if (!left.process(false, true, true))
@@ -25,24 +28,20 @@ int main() {
 
     right.fit(true);
     left.fit(true);
-    
-    cv::Point posR = right.position(true);
-    right.putText(std::to_string(posR.x) + ", " + std::to_string(posR.y));
-    
-    cv::Point posL = left.position(true);
-    left.putText(std::to_string(posL.x) + ", " + std::to_string(posL.y));
+   
+    double distR = right.distance(true);
+    double distL = left.distance(true);
 
-    if (!right.show(30))
+    if (!right.show(15))
       break;
-    if (!left.show(30))
+    if (!left.show(15))
       break;
 
     //calculate height:
-    double diff = abs(posR.x - posL.x);
+    double diff = abs(distR - distL);
     double height = diff * craneHeight / (camDistance + diff);
 
     std::cout << "Height: " << height << '\n';
-
   }
 
   return 0;
