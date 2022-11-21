@@ -1,5 +1,11 @@
 # ravenna-port
-Bachelor's Thesis : computer vision for crane at Ravenna' port
+Bachelor's Thesis : object segmentation with binocular vision for crane at Ravenna' port.
+
+Detects objects and calculate also the heights.
+
+Thesis [here](https://github.com/puccj/ravenna-port/Analisi-di-Video-con-Visione-Binoculare "Thesis PDF (IT)") (in Italian).
+
+
 
 ## Compile code
 After installing OpenCV library, compile with:
