@@ -3,8 +3,6 @@ Bachelor's Thesis : object segmentation with binocular vision for crane at Raven
 
 Detects objects and calculate also the heights.
 
-Thesis [here](https://github.com/puccj/ravenna-port/blob/main/Analisi%20di%20video%20con%20visione%20binoculare.pdf "Thesis PDF (IT)") (in Italian).
-
 
 
 ## Compile code
