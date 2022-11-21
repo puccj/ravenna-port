@@ -1,0 +1,1 @@
+g++ main.cpp cam.cpp -I C:\opencv\include -L C:\opencv\x64\mingw\lib -lopencv_videoio455 -lopencv_core455 -lopencv_highgui455 -lopencv_imgproc455
